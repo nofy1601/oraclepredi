@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <title>Prédicteur Aviator — Styles (buffer circulaire) + Résumé auto</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root{
+      --bg:#0d1117; --card:#15181d; --accent:#00d4ff; --muted:#9aa4b2; --good:#4caf50; --warn:#ffb74d; --bad:#ff5252;
+    }
+    body{background:var(--bg); color:#e6eef6; font-family:Inter,Arial,Helvetica,sans-serif; padding:18px; display:flex; justify-content:center;}
+    .card{width:980px; background:var(--card); border-radius:12px; padding:18px; box-shadow:0 8px 32px rgba(0,0,0,0.6);}
+    h1{margin:0 0 8px; font-size:20px; color:var(--accent); text-align:center;}
+    label{font-size:13px; color:var(--muted); display:block; margin-top:10px;}
+    textarea, input, select, button{
+      width:100%; margin-top:8px; padding:10px 12px; border-radius:8px;
+      border:1px solid rgba(255,255,255,0.04); background:#0f1720; color:#e6eef6;
+      font-size:14px; box-sizing:border-box; font-family: monospace;
+    }
+    textarea {height:110px; resize:vertical;}
+    .row{display:flex; gap:8px;}
+    .small{width:48%;}
+    button.primary{
+      background:linear-gradient(90deg,var(--accent),#6ef0ff); color:#021018;
+      font-weight:700; border:none; cursor:pointer; padding:10px 12px; border-radius:8px;
+    }
+    button.danger{ background:linear-gradient(90deg,var(--bad),#ff8a80); color:white; font-weight:700; border:none; padding:8px 12px; border-radius:8px; cursor:pointer;}
+    .result{margin-top:12px; padding:12px; border-radius:10px; background:rgba(255,255,255,0.02); font-size:14px; white-space:pre-wrap;}
+    .muted{color:var(--muted); font-size:12px;}
+    .patterns{margin-top:10px;padding:10px;border-radius:8px;background:rgba(255,255,255,0.02);font-size:13px;}
+    footer{margin-top:12px;font-size:12px;color:var(--muted); text-align:center;}
+    canvas{margin-top:15px;}
+    table{width:100%; border-collapse:collapse; margin-top:10px;}
+    th, td{border:1px solid rgba(255,255,255,0.05); padding:6px; font-size:12px;}
+    th{background:rgba(255,255,255,0.03);}
+    td button{padding:4px 6px; font-size:11px; background:var(--bad); color:white; border:none; border-radius:4px; cursor:pointer;}
+    .grid{display:grid; grid-template-columns: 1fr 360px; gap:16px;}
+    .small-card{background:rgba(255,255,255,0.02); padding:10px; border-radius:8px;}
+    .pill{display:inline-block; padding:2px 8px; border-radius:999px; background:rgba(255,255,255,0.06); font-size:11px;}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>🎯 Prédicteur Aviator — Styles (buffer circulaire) + Résumé auto</h1>
+
+    <div class="grid">
+      <div>
+        <label>Historique (format : <code>1.2x, 3.4x, 2.5x, ...</code>) :</label>
+        <textarea id="history" placeholder="Ex : 1.8x, 2.5x, 3.1x, 1.7x, 2.9x, 1.9x, 3.0x, 2.2x, 1.6x, 3.3x, 2.8x, 2.1x, 1.5x, 3.4x, 2.6x, 2.9x, 1.8x, 3.2x, 2.7x, 2.0x"></textarea>
+
+        <div class="row" style="margin-top:6px;">
+          <input id="server" class="small" placeholder="ID serveur (optionnel)" />
+          <input id="lastRound" class="small" placeholder="Dernier numéro de tour (optionnel)" />
+        </div>
+
+        <div class="row" style="margin-top:8px;">
+          <select id="mode" class="small" style="width:100%;">
+            <option value="balanced">Mode : Équilibré</option>
+            <option value="aggressive">Mode : Agressif</option>
+            <option value="conservative">Mode : Conservateur</option>
+          </select>
+          <button id="btnPredict" class="primary" style="width:40%;">📈 Prédire</button>
+        </div>
+
+        <button id="btnClearStyles" class="danger" style="margin-top:8px; width:100%;">🗑 Effacer tous les styles</button>
+
+        <div class="result" id="result"><div class="muted">Résultats s'afficheront ici après prédiction.</div></div>
+
+        <div class="patterns" id="patterns" style="display:none;"></div>
+        <div class="patterns" id="autoSummary" style="display:none;"></div>
+
+        <canvas id="chartHistory" height="160"></canvas>
+      </div>
+
+      <div>
+        <div class="small-card">
+          <h3 style="margin:0 0 6px;">📂 Styles enregistrés (buffer circulaire A→Z)</h3>
+          <div id="stylesList" class="muted">Aucun style enregistré.</div>
+        </div>
+
+        <div class="small-card" style="margin-top:12px;">
+          <h3 style="margin:0 0 6px;">ℹ️ Aide</h3>
+          <div class="muted" style="font-size:13px;">
+            <span class="pill">Auto-save</span> À partir de 20 multiplicateurs → enregistrement dans <code>styleA..styleZ</code> en boucle.<br>
+            <span class="pill">Détection rapide</span> À partir de 5 valeurs → recherche du style le plus proche (z-score, dérivées, corrélation).<br>
+            <span class="pill">Prédictions</span> Si un style est apparié → N+2/N+3 issus de la suite du style (avec garde-fous).<br>
+            <span class="pill">Résumé auto</span> Action / Plan / Mise selon les confiances (≥2x, ≥3x).
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <footer>Algorithme local : statistiques empiriques + reconnaissance de style (fenêtres glissantes, z-scores, dérivées, corrélation). Utilisation prudente.</footer>
+  </div>
+
+<script>
+/* ============================
+   Utilitaires : parsing + maths
+   ============================ */
+function parseHistory(txt){
+  if(!txt) return [];
+  return txt.split(/[\n,;]+/).map(s => s.replace(/x/ig,'').trim()).filter(s => s).map(Number).filter(n => !isNaN(n));
+}
+function mean(a){return a.reduce((x,y)=>x+y,0)/a.length;}
+function std(a){const m=mean(a); return Math.sqrt(a.reduce((s,v)=>s+(v-m)*(v-m),0)/a.length);}
+function clamp01(x){return Math.min(1, Math.max(0,x));}
+function corr(a,b){
+  const n=a.length; if(n!==b.length||n===0) return 0;
+  const ma=mean(a), mb=mean(b);
+  let num=0, da=0, db=0;
+  for(let i=0;i<n;i++){const xa=a[i]-ma, xb=b[i]-mb; num+=xa*xb; da+=xa*xa; db+=xb*xb;}
+  const den=Math.sqrt(da*db); return den===0?0:(num/den);
+}
+function diff(arr){const d=[]; for(let i=1;i<arr.length;i++) d.push(arr[i]-arr[i-1]); return d;}
+function zNormalize(arr){
+  const m=mean(arr), s=std(arr)||1e-9;
+  return arr.map(v=>(v-m)/s);
+}
+
+/* ============================
+   Indicateurs (RSI, EMA/MACD)
+   ============================ */
+function simpleRSI(values, period = 14){
+  const len = values.length; if(len<2) return 50;
+  const start = Math.max(1, len - period);
+  let gains=0, losses=0, cnt=0;
+  for(let i=start;i<len;i++){
+    const d=values[i]-values[i-1];
+    if(d>0) gains+=d; else losses+=Math.abs(d);
+    cnt++;
+  }
+  if(cnt===0) return 50;
+  const ag=gains/cnt, al=losses/cnt;
+  if(al===0) return 100;
+  const rs=ag/al; return 100 - 100/(1+rs);
+}
+function ema(values, period){
+  if(values.length===0) return 0;
+  const k=2/(period+1);
+  let e=values[0];
+  for(let i=1;i<values.length;i++) e = values[i]*k + e*(1-k);
+  return e;
+}
+
+/* ============================
+   Stats pack
+   ============================ */
+function computeStats(arr){
+  const avg = mean(arr);
+  const sd = std(arr);
+  const prob2 = arr.filter(v=>v>=2).length / arr.length;
+  const prob3 = arr.filter(v=>v>=3).length / arr.length;
+  const rsi = simpleRSI(arr);
+  const macdHist = ema(arr,12) - ema(arr,26);
+  return { avg, sd, prob2, prob3, rsi, macdHist };
+}
+function generateExplanation(recentStats, styleStats, styleNote){
+  const ex=[];
+  if(recentStats){
+    if(recentStats.rsi>65) ex.push("Trend haussier (RSI élevé)");
+    else if(recentStats.rsi<35) ex.push("Trend baissier (RSI faible)");
+    else ex.push("Trend neutre");
+    if(recentStats.sd<0.5) ex.push("Faible volatilité");
+    else if(recentStats.sd<1.5) ex.push("Volatilité modérée");
+    else ex.push("Volatilité élevée");
+    ex.push(`Moyenne récente ≈ ${recentStats.avg.toFixed(2)}x`);
+    if(recentStats.macdHist>0.02) ex.push("MACD hist positive (momentum)");
+    else if(recentStats.macdHist<-0.02) ex.push("MACD hist négative");
+  }
+  if(styleStats) ex.push(`Style historique : avg ${styleStats.avg.toFixed(2)}x, P(≥2x)=${Math.round(styleStats.prob2*100)}%`);
+  if(styleNote) ex.push(styleNote);
+  return ex;
+}
+
+/* ============================
+   Styles — buffer circulaire A..Z
+   ============================ */
+const MAX_STYLES = 26;
+function getStyleIndex(){ return parseInt(localStorage.getItem('styleIndex')||'0',10); }
+function setStyleIndex(i){ localStorage.setItem('styleIndex', String(i%MAX_STYLES)); }
+function styleKeyAt(i){ return 'style' + String.fromCharCode(65 + (i%MAX_STYLES)); }
+
+function saveStyleCircular(values){
+  if(values.length < 20) return null;
+  const idx = getStyleIndex();
+  const name = styleKeyAt(idx);
+  localStorage.setItem(name, JSON.stringify(values.slice(0,20)));
+  setStyleIndex((idx+1)%MAX_STYLES);
+  renderStylesTable();
+  return name;
+}
+
+function listStyleKeys(){
+  const keys=[];
+  for(let i=0;i<MAX_STYLES;i++){
+    const k=styleKeyAt(i);
+    if(localStorage.getItem(k)) keys.push(k);
+  }
+  return keys;
+}
+
+function renderStylesTable(){
+  const container=document.getElementById('stylesList');
+  const keys = listStyleKeys();
+  if(keys.length===0){ container.innerHTML="<div class='muted'>Aucun style enregistré.</div>"; return; }
+  let rows=[];
+  for(const k of keys){
+    try{ rows.push({key:k, vals: JSON.parse(localStorage.getItem(k)) }); }catch(e){}
+  }
+  let html = `<table><tr><th>Nom</th><th>Multiplicateurs (20)</th><th>Action</th></tr>`;
+  for(const r of rows){
+    html += `<tr>
+      <td style="font-weight:700">${r.key}</td>
+      <td style="font-family:monospace; font-size:12px;">${r.vals.join(', ')}</td>
+      <td><button onclick="(localStorage.removeItem('${r.key}'), renderStylesTable())">❌</button></td>
+    </tr>`;
+  }
+  html += `</table>`;
+  container.innerHTML = html;
+}
+
+/* ============================
+   Détection avancée de style
+   (fenêtre glissante, z-norm, dérivées, corrélation)
+   ============================ */
+function bestStyleMatch(partial){
+  const m = partial.length;
+  if(m < 5) return null; // déclenche à 5+
+  const pZ = zNormalize(partial);
+  const pDz = zNormalize(diff(partial));
+
+  let best=null;
+  const keys = listStyleKeys();
+  for(const key of keys){
+    let arr;
+    try{ arr = JSON.parse(localStorage.getItem(key)); }catch(e){ continue; }
+    if(!Array.isArray(arr) || arr.length<m) continue;
+
+    for(let start=0; start<=arr.length - m; start++){
+      const seg = arr.slice(start, start+m);
+      const sZ = zNormalize(seg);
+      const sDz = zNormalize(diff(seg));
+
+      // MAE z
+      let maeZ=0; for(let k=0;k<m;k++) maeZ += Math.abs(pZ[k]-sZ[k]); maeZ/=m;
+      // MAE dérivées z
+      let maeDz=0; if(m>1){ for(let k=0;k<m-1;k++) maeDz+=Math.abs(pDz[k]-sDz[k]); maeDz/=(m-1); }
+      // corrélation
+      const c = corr(pZ, sZ);
+      const penaltyCorr = (1 - c) * 0.5;
+
+      const score = maeZ + maeDz + penaltyCorr; // plus petit = meilleur
+
+      if(!best || score < best.score){
+        best = { name:key, score, start, style:arr };
+      }
+    }
+  }
+
+  if(!best) return null;
+  const threshold = (m<=5) ? 0.85 : 0.95; // score max toléré
+  return (best.score <= threshold) ? best : null;
+}
+
+/* ============================
+   Prédictions
+   ============================ */
+function predictByStyleContinuation(match, inputLen){
+  const arr = match.style;
+  const start = match.start;
+  const nextIdx = start + inputLen;
+
+  let n2 = arr[nextIdx];
+  let n3 = arr[nextIdx+1];
+
+  if(n2 === undefined){
+    const tail = arr.slice(-4);
+    n2 = Number(mean(tail).toFixed(2));
+  }
+  if(n3 === undefined){
+    const tail = arr.slice(-4);
+    n3 = Number((mean(tail) + std(tail)*0.5).toFixed(2));
+  }
+
+  const sStats = computeStats(arr);
+  let t2 = sStats.prob2, t3 = sStats.prob3;
+  if(n2>=2) t2 = Math.min(1, t2 + 0.10);
+  if(n3>=3) t3 = Math.min(1, t3 + 0.10);
+
+  return {
+    predN2: Number(Number(n2).toFixed(2)),
+    predN3: Number(Number(n3).toFixed(2)),
+    trust2: Math.round(clamp01(t2)*100),
+    trust3: Math.round(clamp01(t3)*100),
+    styleStats: sStats
+  };
+}
+
+function predictFromData(values, styleInfo){
+  const recent = values.slice(-10);
+  const recentStats = computeStats(recent);
+  let styleStats = styleInfo && styleInfo.style ? computeStats(styleInfo.style) : null;
+
+  let predN2;
+  if(styleStats) predN2 = styleStats.avg*0.65 + recentStats.avg*0.35;
+  else predN2 = recentStats.avg*0.75 + (values[values.length-1]||recentStats.avg)*0.25;
+  let predN3 = predN2 + (styleStats ? styleStats.sd*0.6 : recentStats.sd*0.7);
+
+  let trust2 = styleStats ? (styleStats.prob2*0.75 + recentStats.prob2*0.25) : (recentStats.prob2*0.85 + (recentStats.avg>=2?0.15:0));
+  let trust3 = styleStats ? (styleStats.prob3*0.75 + recentStats.prob3*0.25) : (recentStats.prob3*0.85 + (recentStats.avg>=3?0.15:0));
+
+  return {
+    predN2: Number(predN2.toFixed(2)),
+    predN3: Number(predN3.toFixed(2)),
+    trust2: Math.round(clamp01(trust2)*100),
+    trust3: Math.round(clamp01(trust3)*100),
+    features: { short: recentStats },
+    explanation: generateExplanation(recentStats, styleStats)
+  };
+}
+
+/* ============================
+   Résumé auto
+   ============================ */
+function autoStrategySummary(trust2, trust3) {
+  let action = "Passer", plan = "—", stake = "—";
+  if (trust2 >= 80 && trust3 < 40) { action="Jouer"; plan="Full 2x"; stake="2–4% bankroll"; }
+  else if (trust2 >= 60 && trust3 < 40) { action="Jouer (sélectif)"; plan="Full 2x"; stake="1–2% bankroll"; }
+  else if (trust2 >= 80 && trust3 >= 60) { action="Jouer"; plan="Split 50% à 2x, vise 3x"; stake="2–4% bankroll"; }
+  else if (trust3 >= 45 && trust2 >= 70) { action="Jouer (opportunité)"; plan="Split ou Full 3x si bankroll solide"; stake="1–2% bankroll"; }
+  return { action, plan, stake };
+}
+
+/* ============================
+   UI : Chart
+   ============================ */
+let chartInstance=null;
+function renderChart(values, avgSeries){
+  const ctx=document.getElementById('chartHistory').getContext('2d');
+  if(chartInstance) chartInstance.destroy();
+  chartInstance = new Chart(ctx,{
+    type:'line',
+    data:{
+      labels: values.map((_,i)=>i+1),
+      datasets:[
+        { label:'Multiplicateurs', data: values, borderColor:'#00d4ff', backgroundColor:'rgba(0,212,255,0.12)', fill:true, tension:0.25 },
+        { label:'Moyenne mobile (5)', data: avgSeries, borderColor:'#4caf50', borderDash:[5,5], fill:false, tension:0.3 }
+      ]
+    },
+    options:{
+      responsive:true,
+      plugins:{ legend:{ labels:{ color:'#e6eef6'} } },
+      scales:{
+        x:{ ticks:{ color:'#e6eef6'}, grid:{ color:'rgba(255,255,255,0.05)'} },
+        y:{ ticks:{ color:'#e6eef6'}, grid:{ color:'rgba(255,255,255,0.05)'} }
+      }
+    }
+  });
+}
+
+/* ============================
+   Bouton Prédire
+   ============================ */
+document.getElementById('btnPredict').addEventListener('click', ()=>{
+  const raw = document.getElementById('history').value;
+  const server = document.getElementById('server').value.trim();
+  const lastRound = document.getElementById('lastRound').value.trim();
+  const mode = document.getElementById('mode').value;
+  const values = parseHistory(raw);
+
+  const resEl = document.getElementById('result');
+  const patternsEl = document.getElementById('patterns');
+  const summaryEl = document.getElementById('autoSummary');
+
+  if(values.length < 4){
+    resEl.innerHTML = "<div class='muted'>Pas assez de données — entre au moins 4 valeurs.</div>";
+    patternsEl.style.display = 'none';
+    summaryEl.style.display = 'none';
+    return;
+  }
+
+  // 1) Auto-save circulaire si ≥20
+  let saved = null;
+  if(values.length >= 20) saved = saveStyleCircular(values);
+
+  // 2) Détection avancée si ≥5 (on limite à max 10 pour la fenêtre de comparaison)
+  let match = null;
+  if(values.length >= 5){
+    const windowLen = Math.min(values.length, 10);
+    match = bestStyleMatch(values.slice(0, windowLen));
+  }
+
+  // 3) Calcul des prédictions
+  let out, styleNote=null;
+  if(match){
+    const windowLen = Math.min(values.length, 10);
+    const cont = predictByStyleContinuation(match, windowLen);
+    styleNote = `Style détecté : ${match.name} (score ${match.score.toFixed(2)}, fenêtre @${match.start+1}..${match.start+windowLen})`;
+
+    const recentStats = computeStats(values.slice(-10));
+    const expl = generateExplanation(recentStats, cont.styleStats, styleNote);
+
+    out = {
+      predN2: cont.predN2,
+      predN3: cont.predN3,
+      trust2: cont.trust2,
+      trust3: cont.trust3,
+      features: { short: recentStats },
+      explanation: expl
+    };
+  } else {
+    out = predictFromData(values, null);
+  }
+
+  // 4) Ajustements par mode
+  if(mode === 'aggressive'){
+    out.predN3 = Number((out.predN3 * 1.05).toFixed(2));
+    out.trust3 = Math.min(100, out.trust3 + 3);
+  }else if(mode === 'conservative'){
+    out.predN3 = Number((out.predN3 * 0.95).toFixed(2));
+    out.trust3 = Math.max(0, out.trust3 - 3);
+  }
+
+  // 5) Affichage principal
+  let txt = "";
+  if(lastRound) txt += `Dernier tour : #${lastRound}\n`;
+  if(server) txt += `Serveur : ${server}\n`;
+  if(saved) txt += `Style sauvegardé (buffer) : ${saved}\n`;
+  if(match) txt += `Style détecté : ${match.name} (score ${match.score.toFixed(2)})\n`;
+  txt += `\n🔭 Prédiction N+2 : ${out.predN2}x\n🚀 Prédiction N+3 : ${out.predN3}x\n\n`;
+  txt += `📈 Confiance ≥2x : ${out.trust2}%\n🚀 Confiance ≥3x : ${out.trust3}%\n\n`;
+  txt += `📊 Moyenne (récent) : ${out.features.short.avg.toFixed(3)}x | Volatilité : ${out.features.short.sd.toFixed(3)}\n`;
+  txt += `📊 RSI court : ${out.features.short.rsi.toFixed(1)} | MACD hist : ${out.features.short.macdHist.toFixed(3)}\n`;
+  resEl.textContent = txt;
+
+  // 6) Explications + Résumé auto
+  patternsEl.style.display = 'block';
+  patternsEl.innerHTML = `<b>Explications :</b><br>` + out.explanation.map(e=>`• ${e}`).join('<br>');
+
+  const strat = autoStrategySummary(out.trust2, out.trust3);
+  summaryEl.style.display = 'block';
+  summaryEl.innerHTML = `<b>Résumé auto :</b><br>
+    Action : <span style="color:${strat.action.startsWith('Passer')?'var(--bad)':'var(--good)'}">${strat.action}</span><br>
+    Plan : ${strat.plan}<br>
+    Mise : ${strat.stake}`;
+
+  // 7) Graphe
+  const avgSeries = values.map((_,i,arr)=> i<4 ? null : Number((arr.slice(i-4,i+1).reduce((a,b)=>a+b,0)/5).toFixed(3)));
+  renderChart(values, avgSeries);
+  renderStylesTable();
+});
+
+/* ============================
+   Effacer tous les styles (A..Z + index)
+   ============================ */
+document.getElementById('btnClearStyles').addEventListener('click', ()=>{
+  for(let i=0;i<MAX_STYLES;i++){
+    localStorage.removeItem(styleKeyAt(i));
+  }
+  localStorage.removeItem('styleIndex');
+  alert('✅ Tous les styles ont été effacés.');
+  renderStylesTable();
+});
+
+/* Init */
+renderStylesTable();
+</script>
+</body>
+</html>
